@@ -132,8 +132,12 @@ fn startSession(
         if (status != 0) return error.GroupInitializationFailed;
 
         // FreeBSD sets the GID and UID with setusercontext()
-        const result = interop.pwd.setusercontext(null, pwd, pwd.pw_uid, interop.pwd.LOGIN_SETALL);
-        if (result != 0) return error.SetUserUidFailed;
+        const lc = interop.pwd.login_getpwclass(@ptrCast(pwd)) orelse
+            return error.Login_GetClassFailed;
+        defer interop.pwd.login_close(lc);
+        // login_* return null if there's a failure. you can continue, but login doesn't
+        if (interop.pwd.setusercontext(lc, pwd, pwd.pw_uid, interop.pwd.LOGIN_SETALL) != 0)
+            return error.SetUserContextFailed; // error.setusercontext
     } else {
         const status = interop.grp.initgroups(pwd.pw_name, pwd.pw_gid);
         if (status != 0) return error.GroupInitializationFailed;
@@ -174,9 +178,14 @@ fn initEnv(pwd: *interop.pwd.passwd, path_env: ?[:0]const u8) !void {
     _ = interop.stdlib.setenv("USER", pwd.pw_name, 1);
     _ = interop.stdlib.setenv("LOGNAME", pwd.pw_name, 1);
 
-    if (path_env) |path| {
-        const status = interop.stdlib.setenv("PATH", path, 1);
-        if (status != 0) return error.SetPathFailed;
+    // traditionally this information is set by setusercontext on freebsd.
+    // on failure it should also be set by login, but on a well configured
+    // system that should never be needed so we ignore that case here.
+    if (builtin.os.tag != .freebsd) {
+        if (path_env) |path| {
+            const status = interop.stdlib.setenv("PATH", path, 1);
+            if (status != 0) return error.SetPathFailed;
+        }
     }
 }
 
@@ -464,14 +473,19 @@ fn addUtmpEntry(entry: *Utmp, username: [*:0]const u8, pid: c_int) !void {
     entry.ut_type = utmp.USER_PROCESS;
     entry.ut_pid = pid;
 
-    var buf: [4096]u8 = undefined;
+    var buf: [std.posix.PATH_MAX]u8 = undefined;
     const ttyname = try std.os.getFdPath(std.posix.STDIN_FILENO, &buf);
 
     var ttyname_buf: [@sizeOf(@TypeOf(entry.ut_line))]u8 = undefined;
     _ = try std.fmt.bufPrintZ(&ttyname_buf, "{s}", .{ttyname["/dev/".len..]});
 
     entry.ut_line = ttyname_buf;
-    entry.ut_id = ttyname_buf["tty".len..7].*;
+    // i don't know if the original code actually works (seems sus to me), but
+    // this change should be in line with BSD utx logs.
+    entry.ut_id = if (builtin.os.tag.isBSD())
+        ttyname_buf["/dev/tty".len..].*
+    else
+        ttyname_buf["tty".len..7].*;
 
     var username_buf: [@sizeOf(@TypeOf(entry.ut_user))]u8 = undefined;
     _ = try std.fmt.bufPrintZ(&username_buf, "{s}", .{username});
@@ -489,7 +503,8 @@ fn addUtmpEntry(entry: *Utmp, username: [*:0]const u8, pid: c_int) !void {
         .tv_sec = @intCast(tv.tv_sec),
         .tv_usec = @intCast(tv.tv_usec),
     };
-    entry.ut_addr_v6[0] = 0;
+    // I know freebsd doesn't have this, but our siblings may.
+    if (!builtin.os.tag.isBSD()) entry.ut_addr_v6[0] = 0;
 
     utmp.setutxent();
     _ = utmp.pututxline(entry);

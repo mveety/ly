@@ -37,7 +37,11 @@ pub const pwd = @cImport({
     @cInclude("pwd.h");
     // We include a FreeBSD-specific header here since login_cap.h references
     // the passwd struct directly, so we can't import it separately'
-    if (builtin.os.tag == .freebsd) @cInclude("login_cap.h");
+    if (builtin.os.tag == .freebsd) {
+        @cInclude("sys/types.h");
+        @cInclude("sys/resource.h");
+        @cInclude("login_cap.h");
+    }
 });
 
 pub const grp = @cImport({
@@ -79,8 +83,10 @@ pub fn switchTty(console_dev: []const u8, tty: u8) !void {
     const fd = try std.posix.open(console_dev, .{ .ACCMODE = .WRONLY }, 0);
     defer std.posix.close(fd);
 
-    _ = std.c.ioctl(fd, vt.VT_ACTIVATE, tty);
-    _ = std.c.ioctl(fd, vt.VT_WAITACTIVE, tty);
+    if (builtin.os.tag == .linux) {
+        _ = std.c.ioctl(fd, vt.VT_ACTIVATE, tty);
+        _ = std.c.ioctl(fd, vt.VT_WAITACTIVE, tty);
+    }
 }
 
 pub fn getLockState(console_dev: []const u8) !struct {
