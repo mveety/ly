@@ -480,12 +480,15 @@ fn addUtmpEntry(entry: *Utmp, username: [*:0]const u8, pid: c_int) !void {
     _ = try std.fmt.bufPrintZ(&ttyname_buf, "{s}", .{ttyname["/dev/".len..]});
 
     entry.ut_line = ttyname_buf;
-    // i don't know if the original code actually works (seems sus to me), but
-    // this change should be in line with BSD utx logs.
-    entry.ut_id = if (builtin.os.tag.isBSD())
-        ttyname_buf["/dev/tty".len..].*
-    else
-        ttyname_buf["tty".len..7].*;
+
+    if (builtin.os.tag == .freebsd) {
+        // i think libpam should do this for us. I'm uncertain
+        var utid_buf: [@sizeOf(@TypeOf(entry.ut_id))]u8 = undefined;
+        try std.posix.getrandom(&utid_buf);
+        entry.ut_id = utid_buf;
+    } else {
+        entry.ut_id = ttyname_buf["tty".len..7].*;
+    }
 
     var username_buf: [@sizeOf(@TypeOf(entry.ut_user))]u8 = undefined;
     _ = try std.fmt.bufPrintZ(&username_buf, "{s}", .{username});
