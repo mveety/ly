@@ -115,3 +115,11 @@ pub fn setNumlock(val: bool) !void {
         if (status != 0) return error.FailedToSetNumlock;
     }
 }
+
+pub fn nativeRandom(buf: []u8) !void {
+    if (builtin.os.tag.isBSD()) {
+        stdlib.arc4random_buf(buf.ptr, buf.len);
+    } else {
+        try std.posix.getrandom(buf);
+    }
+}
