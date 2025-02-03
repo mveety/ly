@@ -1,0 +1,12 @@
+#%PAM-1.0
+
+auth       include      system
+#auth	required pam_permit.so
+
+account    include      system
+#account required pam_permit.so
+
+password   include      system
+
+#session required pam_permit.so
+
