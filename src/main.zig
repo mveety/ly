@@ -47,21 +47,6 @@ pub fn main() !void {
 
     const stderr = std.io.getStdErr().writer();
 
-    defer {
-        // If we can't shutdown or restart due to an error, we print it to standard error. If that fails, just bail out
-        if (shutdown) {
-            const shutdown_error = std.process.execv(temporary_allocator, &[_][]const u8{ "/bin/sh", "-c", shutdown_cmd });
-            stderr.print("error: couldn't shutdown: {any}\n", .{shutdown_error}) catch std.process.exit(1);
-        } else if (restart) {
-            const restart_error = std.process.execv(temporary_allocator, &[_][]const u8{ "/bin/sh", "-c", restart_cmd });
-            stderr.print("error: couldn't restart: {any}\n", .{restart_error}) catch std.process.exit(1);
-        } else {
-            // The user has quit Ly using Ctrl+C
-            temporary_allocator.free(shutdown_cmd);
-            temporary_allocator.free(restart_cmd);
-        }
-    }
-
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
 
@@ -181,6 +166,21 @@ pub fn main() !void {
     // we end up shutting down or restarting the system
     shutdown_cmd = try temporary_allocator.dupe(u8, config.shutdown_cmd);
     restart_cmd = try temporary_allocator.dupe(u8, config.restart_cmd);
+
+    defer {
+        // If we can't shutdown or restart due to an error, we print it to standard error. If that fails, just bail out
+        if (shutdown) {
+            const shutdown_error = std.process.execv(temporary_allocator, &[_][]const u8{ "/bin/sh", "-c", shutdown_cmd });
+            stderr.print("error: couldn't shutdown: {any}\n", .{shutdown_error}) catch std.process.exit(1);
+        } else if (restart) {
+            const restart_error = std.process.execv(temporary_allocator, &[_][]const u8{ "/bin/sh", "-c", restart_cmd });
+            stderr.print("error: couldn't restart: {any}\n", .{restart_error}) catch std.process.exit(1);
+        } else {
+            // The user has quit Ly using Ctrl+C
+            temporary_allocator.free(shutdown_cmd);
+            temporary_allocator.free(restart_cmd);
+        }
+    }
 
     // Initialize termbox
     _ = termbox.tb_init();
