@@ -481,8 +481,7 @@ fn addUtmpEntry(entry: *Utmp, username: [*:0]const u8, pid: c_int) !void {
 
     entry.ut_line = ttyname_buf;
 
-    if (builtin.os.tag == .freebsd) {
-        // i think libpam should do this for us. I'm uncertain
+    if (builtin.os.tag.isBSD()) {
         var utid_buf: [@sizeOf(@TypeOf(entry.ut_id))]u8 = undefined;
         try interop.nativeRandom(&utid_buf);
         entry.ut_id = utid_buf;
